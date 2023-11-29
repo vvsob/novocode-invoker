@@ -101,6 +101,7 @@ def download_problem_and_submission(submission_id):
 
 def run_strategy(strategy_path, arguments):
     strategy_mod = importlib.import_module(strategy_path.rsplit('.', 1)[0].replace('/', '.').lstrip('.'))
+    importlib.reload(strategy_mod)
     verdict = asyncio.run(strategy_mod.run(*arguments))
     return verdict
 
