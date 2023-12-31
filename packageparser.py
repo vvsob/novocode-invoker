@@ -1,5 +1,3 @@
-from strategy import Submission, TestSet, Limits
-from strategy.checker import Checker
 import xml.etree.ElementTree as ET
 import os
 from parser import get_xml_tag_parser

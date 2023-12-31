@@ -1,8 +1,11 @@
+import datetime
 import shutil
 import stat
 import uuid
 import subprocess
 import os
+from typing import List, Dict
+
 from .errors import CompileError
 
 
@@ -11,7 +14,7 @@ class Pipe:
 
 
 class File:
-    def __init__(self, path=None, role=None):
+    def __init__(self, path: str = None, role: str = None):
         if path is None:
             path = str(uuid.uuid4())
         if not os.path.exists(path):
@@ -29,18 +32,18 @@ class File:
     def __str__(self):
         return self.path
 
-    def read(self):
+    def read(self) -> str:
         with open(self.path, mode='r') as stream:
             text = stream.read()
         return text
 
-    def write(self, text):
+    def write(self, text: str) -> None:
         with open(self.path, mode='w') as stream:
             stream.write(text)
 
 
 class Submission(File):
-    def __init__(self, file, timestamp, author, compile_command, run_command):
+    def __init__(self, file: File, timestamp: datetime.datetime, author: str, compile_command: str, run_command: str):
         super().__init__(file.path, file.role)
         self.timestamp = timestamp
         self.author = author
@@ -49,23 +52,42 @@ class Submission(File):
 
 
 class Limits:
-    def __init__(self, time_ms, memory_kb, real_time_ms):
+    def __init__(self, time_ms: int, memory_kb: int, real_time_ms: int):
         self.time_ms = time_ms
         self.memory_kb = memory_kb
         self.real_time_ms = real_time_ms
 
 
 class Metrics:
-    def __init__(self, time_ms, memory_kb, real_time_ms, status):
+    def __init__(self, time_ms: int, memory_kb: int, real_time_ms: int, status: str):
         self.time_ms = time_ms
         self.memory_kb = memory_kb
         self.real_time_ms = real_time_ms
         self.status = status
 
 
+class TestData:
+    def __init__(self, data):
+        self.data = data
+
+    def get(self) -> str:
+        if isinstance(self.data, str):
+            return self.data
+        if isinstance(self.data, File):
+            return self.data.read()
+        raise NotImplementedError()
+
+
+class Test:
+    def __init__(self, number: int, input: TestData, answer: TestData):
+        self.number = number
+        self.input = input
+        self.answer = answer
+
+
 class Box:
-    def __init__(self, files=[]):
-        self.files = files
+    def __init__(self, files: List[File] = None):
+        self.files = files if files else []
         self.box_path = None
 
     def __enter__(self):
@@ -77,7 +99,7 @@ class Box:
     def __exit__(self, exc_type, exc_val, exc_tb):
         subprocess.run("isolate --cleanup", shell=True)
 
-    def init_stdin(self, stdin):
+    def init_stdin(self, stdin: None | File | str | TestData) -> None:
         data_in_path = os.path.join(self.box_path, "__data.in")
         if stdin is None:
             open(data_in_path, mode='w').close()
@@ -92,7 +114,7 @@ class Box:
         else:
             raise NotImplementedError()
 
-    def init_stdout(self, stdout):
+    def init_stdout(self, stdout: None | File) -> None:
         data_out_path = os.path.join(self.box_path, "__data.out")
         if isinstance(stdout, File):
             open(data_out_path, mode='w').close()
@@ -102,20 +124,21 @@ class Box:
         elif stdout is not None:
             raise NotImplementedError()
 
-    def init_files(self):
+    def init_files(self) -> None:
         for file in self.files:
             os.link(file.path, os.path.join(self.box_path, os.path.basename(file.path)))
 
-    def parse_meta_properties(self, meta_properties):
-        time_ms = float(meta_properties['time']) * 1000
-        real_time_ms = float(meta_properties['time-wall']) * 1000
+    @staticmethod
+    def parse_meta_properties(meta_properties: Dict) -> Metrics:
+        time_ms = int(float(meta_properties['time']) * 1000)
+        real_time_ms = int(float(meta_properties['time-wall']) * 1000)
         memory_kb = int(meta_properties['max-rss'])
         status = "ok"
         if 'status' in meta_properties:
             status = {"RE": "re", "SG": "ml", "TO": "tl", "XX": "cf"}[meta_properties["status"]]
         return Metrics(time_ms, memory_kb, real_time_ms, status)
 
-    def execute_isolate(self, command, limits):
+    def execute_isolate(self, command: str, limits: Limits) -> Metrics:
         meta_path = os.path.join(self.box_path, "__test.meta")
 
         subprocess.run(
@@ -140,7 +163,7 @@ class Box:
 
         return self.parse_meta_properties(meta_properties)
 
-    def run(self, command, stdin, stdout, limits):
+    def run(self, command: str, stdin, stdout, limits) -> Metrics:
         if self.box_path is None:
             raise EnvironmentError()
         self.init_stdin(stdin)
@@ -150,14 +173,20 @@ class Box:
         return metrics
 
 
-def run_isolated(command, stdin=None, stdout=None, files=[], limits=Limits(15000, 512*1024, 30000)):
+def run_isolated(
+        command: str,
+        stdin=None,
+        stdout=None,
+        files: List[File] = [],
+        limits: Limits = Limits(15000, 512*1024, 30000)
+) -> Metrics:
     with Box(files) as box:
         metrics = box.run(command, stdin, stdout, limits)
     return metrics
 
 
 class Executable:
-    def __init__(self, main_file, *args, run_command="{0} {1}"):
+    def __init__(self, main_file: File | str, *args, run_command="{0} {1}"):
         if isinstance(main_file, File):
             self.main_file = main_file
         elif isinstance(main_file, str):
@@ -167,7 +196,7 @@ class Executable:
         self.files = args
         self.run_command = run_command
 
-    def __call__(self, stdin=None, stdout=None, files=[], limits=Limits(15000, 512*1024, 30000), args=[]):
+    def __call__(self, stdin=None, stdout=None, files: List[File] = [], limits: Limits = Limits(15000, 512*1024, 30000), args=[]):
         metrics = run_isolated(
             self.run_command.format(os.path.basename(self.main_file.path), ' '.join(args)),
             stdin,
@@ -176,25 +205,6 @@ class Executable:
             limits
         )
         return metrics
-
-
-class TestData:
-    def __init__(self, data):
-        self.data = data
-
-    def get(self):
-        if isinstance(self.data, str):
-            return self.data
-        if isinstance(self.data, File):
-            return self.data.read()
-        raise NotImplementedError()
-
-
-class Test:
-    def __init__(self, number, input, answer):
-        self.number = number
-        self.input = input
-        self.answer = answer
 
 
 class TestSet:
@@ -208,7 +218,7 @@ class TestSet:
         return self.tests.__next__()
 
 
-async def compile(file):
+async def compile(file: Submission) -> Executable:
     if not file.compile_command:
         return Executable(file.path, run_command=file.run_command)
     executable_path = file.path + '.out'
