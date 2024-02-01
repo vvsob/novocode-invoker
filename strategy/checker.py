@@ -43,5 +43,5 @@ class TestlibChecker(Executable):
             )
             with open(judgement_file.path, mode='r') as judgement_file_stream:
                 judgement_file_contents = judgement_file_stream.read()
-            status = "OK" if metrics.status == "OK" else "WA"
+            status = "ok" if metrics.status == "ok" else "wa"
         return CheckerJudgement(status, judgement_file_contents)
