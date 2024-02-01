@@ -1,12 +1,13 @@
 import os
 from strategy import File, Submission, TestData, Test, TestSet, Limits
-from strategy.checker import Checker
+from strategy.checker import Checker, TestlibChecker
 
 
 def get_xml_tag_parser(tag):
     conversion = {
         "file": parse_file,
         "checker": parse_checker,
+        "testlib_checker": parse_testlib_checker,
         "test_data": parse_test_data,
         "test": parse_test,
         "tests": parse_tests,
@@ -23,6 +24,12 @@ def parse_checker(node, path):
     main_file = parse_file(list(node)[0], path)
     other_files = list(map(lambda child: parse_file(child, path), list(node[1:])))
     return Checker(main_file, *other_files)
+
+
+def parse_testlib_checker(node, path):
+    main_file = parse_file(list(node)[0], path)
+    other_files = list(map(lambda child: parse_file(child, path), list(node[1:])))
+    return TestlibChecker(main_file, *other_files)
 
 
 def parse_test_data(node, path):
