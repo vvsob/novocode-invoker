@@ -1,5 +1,7 @@
+import io
 import os
-from strategy import File, Submission, TestData, Test, TestSet, Limits
+from strategy.test import Test, TestSet, ICPCTestSet
+from strategy.metrics import Limits
 from strategy.checker import Checker, TestlibChecker
 
 
@@ -10,14 +12,15 @@ def get_xml_tag_parser(tag):
         "testlib_checker": parse_testlib_checker,
         "test_data": parse_test_data,
         "test": parse_test,
-        "tests": parse_tests,
-        "limits": parse_limits
+        "testset": parse_testset,
+        "icpc_testset": parse_icpc_testset,
+        "limits": parse_limits,
     }
     return conversion[tag]
 
 
 def parse_file(node, path):
-    return File(os.path.abspath(os.path.join(path, node.attrib["path"])))
+    return os.path.abspath(os.path.join(path, node.attrib["path"]))
 
 
 def parse_checker(node, path):
@@ -35,8 +38,8 @@ def parse_testlib_checker(node, path):
 def parse_test_data(node, path):
     if list(node):
         file = list(node)[0]
-        return TestData(parse_file(file, path))
-    return TestData(node.text)
+        return open(parse_file(file, path), mode='r')
+    return io.StringIO(node.text)
 
 
 def parse_test(node, path):
@@ -44,9 +47,14 @@ def parse_test(node, path):
     return Test(int(node.attrib["number"]), input_data, output_data)
 
 
-def parse_tests(node, path):
+def parse_testset(node, path):
     tests = list(map(lambda child: parse_test(child, path), list(node)))
     return TestSet(tests)
+
+
+def parse_icpc_testset(node, path):
+    tests = list(map(lambda child: parse_test(child, path), list(node)))
+    return ICPCTestSet(tests)
 
 
 def parse_limits(node, path):

@@ -4,3 +4,7 @@ class NovocodeError(Exception):
 
 class CompileError(NovocodeError):
     pass
+
+
+class NoVerdictError(NovocodeError):
+    pass

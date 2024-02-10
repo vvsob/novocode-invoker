@@ -4,6 +4,7 @@ import strategy.verdicts
 def get_verdict_serializer(verdict):
     serializers = {
         strategy.verdicts.TestVerdict: serialize_test,
+        strategy.verdicts.TestingVerdict: serialize_testing,
         strategy.verdicts.ICPCVerdict: serialize_icpc,
     }
     return serializers[type(verdict)]
@@ -22,6 +23,13 @@ def serialize_test(verdict):
     return {
         'metrics': serialize_metrics(verdict.metrics),
         'status': verdict.status,
+    }
+
+
+def serialize_testing(verdict):
+    return {
+        'format': 'testing',
+        'current_test': verdict.current_test,
     }
 
 

@@ -17,6 +17,11 @@ import verdictserializer
 import dateutil.parser
 from dotenv import load_dotenv
 
+from strategy.executable import Compilable
+from strategy.submission import Submission
+from strategy.test import TestSet
+from strategy.verdicts import TestingVerdict
+
 load_dotenv()
 
 NOVOCODE_HOST = os.environ.get("NOVOCODE_HOST")
@@ -91,18 +96,27 @@ def download_problem_and_submission(submission_id):
     with zipfile.ZipFile(io.BytesIO(problem_zip_response.content), 'r') as zip_ref:
         zip_ref.extractall(problem_directory_path)
 
-    return strategy.Submission(
-        strategy.File(submission_source_path),
+    return Submission(
+        Compilable(submission_source_path, compiler_response["compile_command"], compiler_response["run_command"]),
         submission_timestamp, submission_response["owner"],
-        compiler_response["compile_command"],
-        compiler_response["run_command"]
     )
+
+
+def try_hook_testset(submission_id, arguments):
+    def set_test_lambda(test: int):
+        logging.info(f"Testing on test {test}")
+        verdict = TestingVerdict(test)
+        serialized_verdict = verdictserializer.get_verdict_serializer(verdict)(verdict)
+        submit_verdict(submission_id, serialized_verdict)
+    for arg in arguments:
+        if isinstance(arg, TestSet):
+            arg.add_on_next(set_test_lambda)
 
 
 def run_strategy(strategy_path, arguments):
     strategy_mod = importlib.import_module(strategy_path.rsplit('.', 1)[0].replace('/', '.').lstrip('.'))
     importlib.reload(strategy_mod)
-    verdict = asyncio.run(strategy_mod.run(*arguments))
+    verdict = strategy_mod.run(*arguments)
     return verdict
 
 
@@ -121,6 +135,7 @@ def loop(r):
         try:
             submission = download_problem_and_submission(submission_id)
             strategy_path, arguments = packageparser.parse_package(problem_xml_path, problem_directory_path)
+            try_hook_testset(submission_id, arguments)
             verdict = run_strategy(strategy_path, [submission, *arguments])
             serialized_verdict = verdictserializer.get_verdict_serializer(verdict)(verdict)
             submit_verdict(submission_id, serialized_verdict)
@@ -128,7 +143,7 @@ def loop(r):
         except BaseException as ex:
             submit_verdict(submission_id, {"format": "judge_error"})
             logging.info(f"Failed to test {submission_id}, caught exception: {ex}")
-            logging.info(f"{traceback.format_exception(ex)}")
+            logging.info(''.join(traceback.format_exception(ex)))
         clear_downloaded_files()
 
 
